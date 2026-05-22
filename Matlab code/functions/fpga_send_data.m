@@ -1,0 +1,48 @@
+function fpga_send_data(pattern, mask)
+    % Written by E.Picco, Feb 2022
+    
+    [pat_fpga, pat_debug] = fpga_real_to_fpga(pattern, 15); %R: d.u  (pattern) is converted in an array of bytes (each value of d.u is converted in 2 bytes)
+    pat_fpga =  reshape(pat_fpga,[2,size(pat_fpga,2)/2]);
+    pat_fpga=pat_fpga';
+    
+    %REMOVE COMMAND LINES FROM DATA :if you don't do it, some of the exp won't run as expected but with higher error rate, for various reasons (i.e. depending on the command sent by mistake)
+    i=find(pat_fpga(:,1)==112);
+    pat_fpga(i)=113;
+
+    j=find(pat_fpga(:,1)==118);
+    pat_fpga(j)=117;
+
+    
+    [msk_fpga, msk_debug] = fpga_real_to_fpga(mask, 15); %R: d.wi*hp.inp  (mask*inp) is converted in an array of bytes (each value of masked input is converted in 2 bytes)
+    msk_fpga =  reshape(msk_fpga,[2,size(msk_fpga,2)/2]);
+    msk_fpga=msk_fpga';
+       
+%     select_byte = 17; %pattern
+%     select_byte = 18; %mask
+%     select_byte = 19; %weights
+
+    M = [112 0]; %init                                       70 00         
+    M = [M; 112 1];                                        % 70 01
+    select_byte = 17; %pattern
+    M = [M; 112 select_byte; 118 84; pat_fpga; 118 85];   % 70 11; 76 54; .......; 76 55
+    select_byte = 18; %mask
+    M = [M; 112 select_byte; 118 84; msk_fpga; 118 85];   % 70 12; 76 54; .......; 76 55
+    M = [M; 112 0]; %init                                    70 00
+
+    % bit stuffing 
+    M = flip(M,2);
+    M = [M zeros(size(M))];
+    M = M'; %because data are read by column
+
+    % save in .bin file
+    f = fopen('data_tx.bin', 'w');
+    fwrite(f, M, 'uint8');
+    fclose(f);
+
+    % write bin file to xillybus device file 
+    command = 'cat data_tx.bin > \\.\xillybus_write_32';
+    status = system(command); %return 0 if command is succesfull
+%     [status,cmdout] = system(command)
+    if status==1; disp('Error: Data not sent to fpga') ; end
+
+end
